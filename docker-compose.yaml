@@ -1,0 +1,280 @@
+version: '3.8'
+services:
+
+  department-service:
+    container_name: department-service
+    image: pblgllgs/department-service-microservice-sb2:0.0.1-SNAPSHOT-configserver
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: "curl --fail --silent localhost:8888/actuator/health/readiness | grep UP || exit 1"
+      start_period: 10s
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - microservices-net
+      - department-db
+    depends_on:
+      api-gateway:
+        condition: service_started
+      service-registry:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      mysql_department:
+        condition: service_healthy
+      zipkin:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  employee-service:
+    container_name: employee-service
+    image: pblgllgs/employee-service-microservice-sb2:0.0.1-SNAPSHOT-configserver-postgres-mongo
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: "curl --fail --silent localhost:8888/actuator/health/readiness | grep UP || exit 1"
+      start_period: 10s
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - microservices-net
+      - employee-db
+    depends_on:
+      api-gateway:
+        condition: service_started
+      service-registry:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      postgres_employee:
+        condition: service_healthy
+      zipkin:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  organization-service:
+    container_name: organization-service
+    image: pblgllgs/organization-service-microservice-sb2:0.0.1-SNAPSHOT-configserver-mongo
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: mongo
+    healthcheck:
+      test: "curl --fail --silent localhost:8888/actuator/health/readiness | grep UP || exit 1"
+      start_period: 10s
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - microservices-net
+      - organization-db
+    depends_on:
+      api-gateway:
+        condition: service_started
+      service-registry:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      mongo_organization:
+        condition: service_healthy
+      zipkin:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  config-server:
+    container_name: config-server
+    image: pblgllgs/config-server-microservice-sb2:latest
+    ports:
+      - "8888:8888"
+    environment:
+      EUREKA_URL: http://service-registry:8761/eureka
+    networks:
+      - microservices-net
+    healthcheck:
+      test: "curl --fail --silent localhost:8888/actuator/health | grep UP || exit 1"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      service-registry:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+
+  api-gateway:
+    container_name: api-gateway
+    image: pblgllgs/api-gateway-microservice-sb2:latest
+    ports:
+      - "8765:8765"
+    environment:
+      ZIPKIN_URL: http://zipkin:9411/
+      EUREKA_URL: http://service-registry:8761/eureka
+    networks:
+      - microservices-net
+    healthcheck:
+      test: "curl --fail --silent localhost:8888/actuator/health | grep UP || exit 1"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      service-registry:
+        condition: service_started
+
+  service-registry:
+    container_name: service-registry
+    image: pblgllgs/service-registry-microservice-sb2:latest
+    ports:
+      - "8761:8761"
+    networks:
+      - microservices-net
+    healthcheck:
+      test: "curl --fail --silent localhost:8888/actuator/health | grep UP || exit 1"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mysql_department:
+    container_name: mysql_db_department
+    image: mysql:8.0.32
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_USERNAME: root
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: db_department
+    ports:
+      - "3306:3306"
+    volumes:
+      - volume_mysql_db_department:/var/lib/mysql
+    networks:
+      - department-db
+    healthcheck:
+      test: "/usr/bin/mysql --user=root --password=password --execute \"SHOW DATABASES;\""
+      interval: 2s
+      timeout: 20s
+      retries: 10
+
+  postgres_employee:
+    container_name: postgres_db_employee
+    image: postgres:15.1
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db_employee
+    ports:
+      - "5432:5432"
+    volumes:
+      - volume_postgres_db_employee:/var/lib/postgresql/data
+    networks:
+      - employee-db
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 2s
+      timeout: 20s
+      retries: 10
+
+#  postgres_organization:
+#    container_name: postgres_db_organization
+#    image: postgres:15.1
+#    restart: always
+#    environment:
+#      POSTGRES_USER: postgres
+#      POSTGRES_PASSWORD: password
+#      POSTGRES_DB: db_organization
+#    ports:
+#      - "5431:5431"
+#    expose:
+#      - "5431"
+#    command:
+#      - -p 5431
+#    volumes:
+#      - volume_postgres_db_organization:/var/lib/postgresql/data
+#    networks:
+#      - organization-db
+#    healthcheck:
+#      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+#      interval: 2s
+#      timeout: 20s
+#      retries: 10
+
+  mongo_organization:
+    container_name: mongo_db_organization
+    image: mongo:6.0
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: rootuser
+      MONGO_INITDB_ROOT_PASSWORD: rootpass
+      MONGO_INITDB_DATABASE: db_organization
+    healthcheck:
+      test: ["CMD","mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    ports:
+      - "27017:27017"
+    volumes:
+      - volume_mongo_db_organization:/data/db
+    networks:
+      - organization-db
+      - mongo-express
+
+  mongo-express:
+    container_name: mongo-express
+    image: mongo-express:latest
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: rootuser
+      ME_CONFIG_MONGODB_ADMINPASSWORD: rootpass
+      ME_CONFIG_MONGODB_SERVER: mongo_organization
+      ME_CONFIG_MONGODB_PORT: "27017"
+    ports:
+      - "8181:8081"
+    networks:
+      - mongo-express
+    depends_on:
+      mongo_organization:
+        condition: service_healthy
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:3.11.0
+    ports:
+      - "5672:5672"
+    networks:
+      - microservices-net
+
+  zipkin:
+    container_name: zipkin
+    image: openzipkin/zipkin:2.24
+    ports:
+      - "9411:9411"
+    networks:
+      - microservices-net
+
+volumes:
+  volume_mysql_db_department:
+    external: false
+  volume_postgres_db_organization:
+    external: false
+#  volume_postgres_db_employee:
+#    external: false
+  volume_mongo_db_organization:
+    external: false
+
+networks:
+  microservices-net:
+  department-db:
+  organization-db:
+  employee-db:
+  mongo-express:
