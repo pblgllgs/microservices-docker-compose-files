@@ -265,10 +265,10 @@ services:
 volumes:
   volume_mysql_db_department:
     external: false
-  volume_postgres_db_organization:
-    external: false
-#  volume_postgres_db_employee:
-#    external: false
+  # volume_postgres_db_organization:
+  #   external: false
+ volume_postgres_db_employee:
+   external: false
   volume_mongo_db_organization:
     external: false
 
